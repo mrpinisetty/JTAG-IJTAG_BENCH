@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JTAG / IJTAG Bench — Interactive DFT Primer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080b10;
+  --bg2:#0c1119;
+  --panel:#111823;
+  --panel2:#161f2c;
+  --grid:rgba(120,140,165,0.07);
+  --border:#232f40;
+  --border-soft:#1a2432;
+  --text:#dfe9f2;
+  --muted:#7c8aa0;
+  --muted2:#586376;
+  --hi:#6ef5c5;      /* logic 1 / active signal - phosphor */
+  --hi-dim:#2c5548;
+  --lo:#2a3644;       /* logic 0 / inactive */
+  --control:#ffb454;  /* control path amber */
+  --status:#63b3ff;   /* status path blue */
+  --error:#ff6b6b;
+  --error-dim:#3a2222;
+  --purple:#b18cff;
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  margin:0;
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px) 0 0/100% 28px,
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0/28px 100%,
+    var(--bg);
+  color:var(--text);
+  font-family:'IBM Plex Sans', sans-serif;
+  font-size:15px;
+  line-height:1.55;
+  padding-bottom:64px;
+}
+h1,h2,h3,h4{font-family:'IBM Plex Mono', monospace; letter-spacing:0.01em; font-weight:600; margin:0 0 10px;}
+code, .mono{font-family:'IBM Plex Mono', monospace;}
+::selection{background:var(--hi-dim); color:var(--hi);}
+a{color:var(--hi);}
+
+/* ---------- layout shell ---------- */
+.shell{display:grid; grid-template-columns:252px 1fr; min-height:100vh;}
+@media (max-width:900px){ .shell{grid-template-columns:1fr;} .nav{position:static; height:auto;} }
+
+.nav{
+  position:sticky; top:0; height:100vh; overflow-y:auto;
+  background:var(--bg2); border-right:1px solid var(--border-soft);
+  padding:18px 14px 90px;
+}
+.brand{padding:6px 6px 16px; border-bottom:1px solid var(--border-soft); margin-bottom:12px;}
+.brand .tag{font-size:10px; letter-spacing:0.16em; color:var(--muted2); text-transform:uppercase;}
+.brand h1{font-size:15px; margin:4px 0 0; color:var(--hi);}
+.brand .sub{font-size:11px; color:var(--muted); margin-top:3px;}
+
+.progress-wrap{margin:10px 6px 16px; }
+.progress-bar{height:4px; background:var(--panel2); border-radius:2px; overflow:hidden;}
+.progress-fill{height:100%; background:linear-gradient(90deg,var(--hi),var(--status)); width:0%; transition:width .4s;}
+.progress-label{font-size:10px; color:var(--muted); margin-top:5px; font-family:'IBM Plex Mono';}
+
+.navgroup{margin-bottom:4px;}
+.navgroup > a.navtop{
+  display:flex; gap:8px; align-items:center; padding:7px 8px; border-radius:6px;
+  color:var(--text); text-decoration:none; font-size:12.5px; font-family:'IBM Plex Mono';
+}
+.navgroup > a.navtop:hover{background:var(--panel2);}
+.navgroup > a.navtop .num{color:var(--muted2); font-size:11px;}
+.navgroup > a.navtop.done .dot{background:var(--hi); box-shadow:0 0 6px var(--hi);}
+.navgroup .dot{width:6px;height:6px;border-radius:50%;background:var(--muted2); flex-shrink:0;}
+.navsub{padding-left:26px; display:flex; flex-direction:column;}
+.navsub a{color:var(--muted); text-decoration:none; font-size:11.5px; padding:3px 0; font-family:'IBM Plex Mono';}
+.navsub a:hover{color:var(--hi);}
+
+.mode-toggle{display:flex; margin:14px 6px 4px; background:var(--panel2); border-radius:8px; padding:3px; border:1px solid var(--border-soft);}
+.mode-toggle button{flex:1; background:transparent; border:0; color:var(--muted); padding:7px 4px; font-family:'IBM Plex Mono'; font-size:11px; border-radius:6px; cursor:pointer;}
+.mode-toggle button.active{background:var(--hi); color:#062018; font-weight:600;}
+
+.main{padding:0; max-width:1040px;}
+.hero{padding:64px 48px 40px; border-bottom:1px solid var(--border-soft); position:relative; overflow:hidden;}
+.hero .tag{font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.18em; color:var(--hi); text-transform:uppercase;}
+.hero h1{font-size:38px; margin:12px 0 14px; color:var(--text); max-width:680px; line-height:1.15;}
+.hero p{max-width:560px; color:var(--muted); font-size:15.5px;}
+.hero .cta{margin-top:22px; display:inline-flex; gap:10px; align-items:center; background:var(--hi); color:#062018; padding:11px 20px; border-radius:8px; text-decoration:none; font-family:'IBM Plex Mono'; font-weight:600; font-size:13px;}
+
+section.module{padding:46px 48px; border-bottom:1px solid var(--border-soft);}
+section.module.alt{background:var(--bg2);}
+.module .eyebrow{font-family:'IBM Plex Mono'; font-size:11px; color:var(--muted2); letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px;}
+.module h2{font-size:23px; color:var(--text); margin-bottom:6px;}
+.module .dek{color:var(--muted); max-width:680px; margin-bottom:22px; font-size:14.5px;}
+
+.panel{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px;}
+.panel + .panel{margin-top:16px;}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+@media (max-width:720px){.grid2{grid-template-columns:1fr;}}
+
+.callout{border-left:3px solid var(--hi); background:var(--hi-dim); padding:12px 14px; border-radius:0 8px 8px 0; font-size:13.5px; margin:14px 0;}
+.callout.why{border-color:var(--control); background:rgba(255,180,84,0.08);}
+.callout.internal{border-color:var(--status); background:rgba(99,179,255,0.07);}
+.callout b{color:var(--text);}
+.tech-only{display:none;}
+body.mode-technical .tech-only{display:block;}
+body.mode-technical .beginner-only{display:none;}
+.pill{display:inline-block; font-family:'IBM Plex Mono'; font-size:10.5px; padding:2px 8px; border-radius:20px; border:1px solid var(--border); color:var(--muted); margin-right:4px;}
+.pill.control{color:var(--control); border-color:var(--control);}
+.pill.status{color:var(--status); border-color:var(--status);}
+.pill.data{color:var(--hi); border-color:var(--hi);}
+
+button.btn{
+  font-family:'IBM Plex Mono'; font-size:12.5px; background:var(--panel2); color:var(--text);
+  border:1px solid var(--border); padding:9px 14px; border-radius:7px; cursor:pointer; transition:.15s;
+}
+button.btn:hover{border-color:var(--hi); color:var(--hi);}
+button.btn.primary{background:var(--hi); color:#062018; border-color:var(--hi); font-weight:600;}
+button.btn.primary:hover{filter:brightness(1.08);}
+button.btn:disabled{opacity:.35; cursor:not-allowed;}
+button.btn.small{padding:6px 10px; font-size:11px;}
+.btnrow{display:flex; gap:8px; flex-wrap:wrap; margin:12px 0;}
+
+.reg{display:flex; gap:3px;}
+.bit{
+  width:34px; height:34px; border:1px solid var(--border); border-radius:5px;
+  display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono';
+  font-weight:600; background:var(--panel2); color:var(--muted); transition:.25s;
+}
+.bit.one{color:var(--hi); border-color:var(--hi); box-shadow:0 0 8px rgba(110,245,197,.25);}
+.bit.active{outline:2px solid var(--status);}
+.reglabel{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--muted2); margin-bottom:5px; text-transform:uppercase; letter-spacing:.06em;}
+
+.flow{display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:'IBM Plex Mono'; font-size:13px;}
+.flow .node{border:1px solid var(--border); background:var(--panel2); padding:8px 12px; border-radius:7px; color:var(--text); cursor:default;}
+.flow .node.on{border-color:var(--hi); color:var(--hi); box-shadow:0 0 10px rgba(110,245,197,.2);}
+.flow .arrow{color:var(--muted2);}
+
+svg text{font-family:'IBM Plex Mono', monospace;}
+
+/* TAP diagram */
+#tapsvg .st{fill:var(--panel2); stroke:var(--border); stroke-width:1.4; cursor:pointer; transition:.15s;}
+#tapsvg .st:hover{stroke:var(--status);}
+#tapsvg .st.active{fill:var(--hi-dim); stroke:var(--hi); filter:drop-shadow(0 0 6px rgba(110,245,197,.5));}
+#tapsvg .stlabel{fill:var(--text); font-size:9.5px; pointer-events:none;}
+#tapsvg .edge{stroke:var(--border); stroke-width:1.2; fill:none; marker-end:url(#arrow);}
+#tapsvg .edge.active{stroke:var(--hi); stroke-width:2;}
+#tapsvg .edgelabel{fill:var(--muted2); font-size:8.5px;}
+
+.statebox{background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:14px; margin-top:14px;}
+.statebox h4{color:var(--hi); font-size:13px; margin-bottom:6px;}
+.statebox .meta{display:flex; gap:16px; font-size:12px; color:var(--muted); margin-top:8px; flex-wrap:wrap;}
+.statebox .meta b{color:var(--text);}
+
+table.spec{width:100%; border-collapse:collapse; font-size:12.5px; font-family:'IBM Plex Mono';}
+table.spec th, table.spec td{border:1px solid var(--border); padding:7px 10px; text-align:left;}
+table.spec th{background:var(--panel2); color:var(--muted); font-weight:500;}
+table.spec tr:hover td{background:var(--panel2);}
+
+/* Waveform */
+.wave-row{display:flex; align-items:center; gap:10px; margin-bottom:4px;}
+.wave-name{width:40px; font-family:'IBM Plex Mono'; font-size:11px; color:var(--muted); flex-shrink:0; text-align:right;}
+.wave-track{display:flex; flex:1; overflow-x:auto;}
+.wave-cell{
+  width:34px; height:30px; flex-shrink:0; border-right:1px solid var(--border-soft);
+  display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono'; font-size:11px; color:var(--muted); cursor:pointer;
+}
+.wave-cell.hi{color:var(--hi); background:rgba(110,245,197,.06); border-top:2px solid var(--hi);}
+.wave-cell.lo{border-bottom:2px solid var(--lo);}
+.wave-cell.sel{background:var(--panel2); outline:1px solid var(--status);}
+
+/* SIB gate */
+.gate-wrap{display:flex; align-items:center; gap:18px; flex-wrap:wrap;}
+.gate{width:74px; height:74px; border-radius:10px; border:2px solid var(--border); position:relative; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono'; font-weight:700;}
+.gate.closed{background:var(--panel2); color:var(--muted);}
+.gate.open{background:var(--hi-dim); border-color:var(--hi); color:var(--hi); box-shadow:0 0 14px rgba(110,245,197,.3);}
+
+.legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); margin-top:10px; font-family:'IBM Plex Mono';}
+.legend span{display:inline-flex; align-items:center; gap:5px;}
+.legend i{width:10px; height:10px; border-radius:2px; display:inline-block;}
+
+.quiz{background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:16px; margin-top:12px;}
+.quiz p.q{font-weight:600; margin:0 0 10px; font-size:13.5px;}
+.quiz .opts{display:flex; flex-direction:column; gap:6px;}
+.quiz .opt{text-align:left; background:var(--panel); border:1px solid var(--border); padding:9px 12px; border-radius:7px; cursor:pointer; font-size:13px; color:var(--text);}
+.quiz .opt:hover{border-color:var(--status);}
+.quiz .opt.correct{border-color:var(--hi); background:var(--hi-dim); color:var(--hi);}
+.quiz .opt.wrong{border-color:var(--error); background:var(--error-dim); color:var(--error);}
+.quiz .explain{margin-top:10px; font-size:12.5px; color:var(--muted); display:none;}
+.quiz .explain.show{display:block;}
+
+.glossary-item{border-bottom:1px solid var(--border-soft); padding:12px 0;}
+.glossary-item dt{font-family:'IBM Plex Mono'; color:var(--hi); font-weight:600; font-size:13.5px;}
+.glossary-item dd{margin:4px 0 0; color:var(--muted); font-size:13px;}
+.search-box{width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); font-family:'IBM Plex Mono'; font-size:13px; margin-bottom:14px;}
+
+/* status bench bar (signature element) */
+.bench{
+  position:fixed; bottom:0; left:0; right:0; height:52px; background:#05070a; border-top:1px solid var(--border);
+  display:flex; align-items:center; padding:0 18px; gap:22px; z-index:50; font-family:'IBM Plex Mono'; font-size:11px;
+  overflow-x:auto; white-space:nowrap;
+}
+.bench .led{display:flex; align-items:center; gap:7px; flex-shrink:0;}
+.bench .led .lamp{width:9px; height:9px; border-radius:50%; background:var(--lo); border:1px solid var(--border); transition:.15s;}
+.bench .led .lamp.on{background:var(--hi); box-shadow:0 0 8px var(--hi);}
+.bench .led .lamp.ctrl.on{background:var(--control); box-shadow:0 0 8px var(--control);}
+.bench .led .lamp.err.on{background:var(--error); box-shadow:0 0 8px var(--error);}
+.bench .label{color:var(--muted2);}
+.bench .val{color:var(--text); font-weight:600; min-width:70px; display:inline-block;}
+.bench .brandmark{color:var(--muted2); margin-right:6px;}
+
+footer.cheat{padding:50px 48px 90px;}
+.cheat-diagram{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:26px;}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0"><defs>
+  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#4a5a70"/></marker>
+</defs></svg>
+
+<div class="shell">
+<nav class="nav">
+  <div class="brand">
+    <div class="tag">DFT Fresher Track</div>
+    <h1>JTAG / IJTAG Bench</h1>
+    <div class="sub">Learn by driving the scan network yourself.</div>
+  </div>
+
+  <div class="mode-toggle">
+    <button id="btn-beginner" class="active" onclick="setMode('beginner')">Beginner</button>
+    <button id="btn-technical" onclick="setMode('technical')">Technical</button>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="progress-label"><span id="progress-label">0 / 12 modules visited</span></div>
+  </div>
+
+  <div class="navgroup"><a class="navtop" href="#m-problem" data-m="m-problem"><span class="dot"></span><span class="num">01</span> Why Test Access Exists</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-vs" data-m="m-vs"><span class="dot"></span><span class="num">02</span> JTAG vs IJTAG</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-basics" data-m="m-basics"><span class="dot"></span><span class="num">03</span> JTAG Basics</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-tap" data-m="m-tap"><span class="dot"></span><span class="num">04</span> TAP State Machine</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-irdr" data-m="m-irdr"><span class="dot"></span><span class="num">05</span> IR / DR & Boundary Scan</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-whyij" data-m="m-whyij"><span class="dot"></span><span class="num">06</span> Why IJTAG</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-network" data-m="m-network"><span class="dot"></span><span class="num">07</span> IJTAG Network</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-sib" data-m="m-sib"><span class="dot"></span><span class="num">08</span> SIB Simulator</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-hier" data-m="m-hier"><span class="dot"></span><span class="num">09</span> Multiple SIBs</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-icl-pdl" data-m="m-icl-pdl"><span class="dot"></span><span class="num">10</span> ICL vs PDL</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-e2e" data-m="m-e2e"><span class="dot"></span><span class="num">11</span> Complete Access Sequence</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-debug" data-m="m-debug"><span class="dot"></span><span class="num">12</span> Debugging</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-quiz" data-m="m-quiz"><span class="dot"></span><span class="num">13</span> Knowledge Check</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-glossary" data-m="m-glossary"><span class="dot"></span><span class="num">14</span> Glossary</a></div>
+  <div class="navgroup"><a class="navtop" href="#m-cheatsheet" data-m="m-cheatsheet"><span class="dot"></span><span class="num">15</span> Cheat Sheet</a></div>
+</nav>
+
+<main class="main">
+
+<div class="hero">
+  <div class="tag">IEEE 1149.1 · IEEE 1687 · DFT Fundamentals</div>
+  <h1>Stop reading about scan chains. Start shifting bits through one.</h1>
+  <p>One consistent chip — CPU, MBIST, a sensor, and a debug block behind a JTAG TAP and an IJTAG network — runs through every module below. Drive TMS yourself, open a SIB with your own hands, and watch a status bit travel all the way back out through TDO.</p>
+  <a class="cta" href="#m-problem">Start the walkthrough ↓</a>
+</div>
+
+<!-- ============ 01 THE PROBLEM ============ -->
+<section class="module" id="m-problem">
+  <div class="eyebrow">Module 01</div>
+  <h2>Why does test access exist at all?</h2>
+  <p class="dek">Before any acronyms: a modern chip is full of things that need to be reached from the outside, and it only has a handful of pins to reach them with.</p>
+
+  <div class="panel">
+    <div class="reglabel">The chip</div>
+    <svg viewBox="0 0 640 260" style="width:100%; height:auto;">
+      <rect x="40" y="20" width="560" height="220" rx="10" fill="#0e141d" stroke="#232f40"/>
+      <g id="soc-blocks" font-size="11" fill="#dfe9f2">
+        <!-- blocks -->
+      </g>
+      <g id="soc-signals" stroke="#3a4a5e" stroke-width="1.4" fill="none"></g>
+    </svg>
+    <div class="btnrow">
+      <button class="btn primary" onclick="animateSoc()">▶ Try to reach every block directly</button>
+      <button class="btn" onclick="resetSoc()">Reset</button>
+    </div>
+    <div class="callout" id="soc-callout">Click the button — watch six internal blocks each try to fight their way to a handful of external pins.</div>
+  </div>
+
+  <div class="callout why"><b>Why this matters:</b> Wiring every internal block straight to a package pin doesn't scale — pins are expensive, and most of these signals are only needed rarely, during test or debug. Chips need a <b>shared, standardized, serial path</b> instead of one wire per signal. That shared path is what JTAG — and later IJTAG — provide.</div>
+</section>
+
+<!-- ============ 02 JTAG vs IJTAG ============ -->
+<section class="module alt" id="m-vs">
+  <div class="eyebrow">Module 02</div>
+  <h2>JTAG vs IJTAG — not the same thing</h2>
+  <p class="dek">They solve related but different problems, and one commonly rides on top of the other.</p>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="reglabel">JTAG · IEEE 1149.1</div>
+      <div class="flow" style="flex-direction:column; align-items:flex-start;">
+        <div class="node">External Tester</div>
+        <div class="arrow">↓</div>
+        <div class="node">JTAG TAP</div>
+        <div class="arrow">↓</div>
+        <div class="node">Boundary Scan / Test Logic</div>
+      </div>
+      <p style="margin-top:10px; font-size:13px; color:var(--muted);">Standardizes how an <b>external</b> tester talks to a chip's pins and test logic through 4–5 wires.</p>
+    </div>
+    <div class="panel">
+      <div class="reglabel">IJTAG · IEEE 1687</div>
+      <div class="flow" style="flex-direction:column; align-items:flex-start;">
+        <div class="node">External Access</div>
+        <div class="arrow">↓</div>
+        <div class="node">JTAG / TAP</div>
+        <div class="arrow">↓</div>
+        <div class="node">IJTAG Network</div>
+        <div class="arrow">↓</div>
+        <div style="display:flex; gap:8px;"><div class="node">MBIST</div><div class="node">Sensor</div><div class="node">Debug</div></div>
+      </div>
+      <p style="margin-top:10px; font-size:13px; color:var(--muted);">Standardizes how the chip's <b>internal</b> embedded instruments get reached, reusing the JTAG TAP as one possible on-ramp.</p>
+    </div>
+  </div>
+
+  <table class="spec panel" style="margin-top:16px;">
+    <tr><th></th><th>JTAG (1149.1)</th><th>IJTAG (1687)</th></tr>
+    <tr><td>Reaches</td><td>Chip pins / boundary logic</td><td>Embedded instruments anywhere inside the chip</td></tr>
+    <tr><td>Core state machine</td><td>TAP controller</td><td>Uses a TAP as one entry point, but adds a reconfigurable network on top</td></tr>
+    <tr><td>Path length</td><td>Fixed by design</td><td>Changes dynamically as SIBs open/close</td></tr>
+    <tr><td>Describes structure via</td><td>Implementation-specific</td><td>ICL</td></tr>
+    <tr><td>Describes operations via</td><td>Implementation-specific</td><td>PDL</td></tr>
+  </table>
+  <div class="callout">IJTAG does not replace JTAG. In most real chips, the JTAG TAP is the door, and the IJTAG network is the hallway system behind that door.</div>
+</section>
+
+<!-- ============ 03 JTAG BASICS ============ -->
+<section class="module" id="m-basics">
+  <div class="eyebrow">Module 03</div>
+  <h2>The four wires: TCK, TMS, TDI, TDO</h2>
+  <p class="dek">Every JTAG interaction, no matter how complex, is built from just these signals.</p>
+
+  <div class="grid2">
+    <div class="panel">
+      <table class="spec">
+        <tr><th>Signal</th><th>Role</th></tr>
+        <tr><td>TCK</td><td>Test Clock — every JTAG action happens on its edge</td></tr>
+        <tr><td>TMS</td><td>Test Mode Select — steers the TAP state machine, 1 bit per TCK</td></tr>
+        <tr><td>TDI</td><td>Test Data In — serial data going into the chip</td></tr>
+        <tr><td>TDO</td><td>Test Data Out — serial data coming out of the chip</td></tr>
+        <tr><td>TRST</td><td>Optional async reset of the TAP (many designs use TMS-based reset instead)</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="reglabel">Try it — shift a value through a 4-bit register</div>
+      <div class="reg" id="shift-reg"></div>
+      <div class="btnrow">
+        <button class="btn primary" onclick="shiftOnce()">Pulse TCK — Shift</button>
+        <button class="btn" onclick="resetShift()">Reset</button>
+      </div>
+      <div style="font-size:12.5px; color:var(--muted);">TDI value queued next: <span class="mono" id="tdi-queue" style="color:var(--hi)">1</span> · TDO out: <span class="mono" id="tdo-out" style="color:var(--status)">–</span></div>
+      <div class="callout internal beginner-only" style="margin-top:12px;">Beginner view: think of the register as a bucket brigade. Each clock pulse, everyone passes their bit one seat to the right; a new bit enters on the left (TDI), and whatever falls off the right end is TDO.</div>
+      <div class="callout internal tech-only">Technical view: this is a simple shift register modelling the <b>Shift-DR/Shift-IR</b> TAP state. On each TCK rising edge while in a shift state, the register shifts one position toward TDO and samples TDI into the LSB (or MSB depending on chain convention).</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 TAP STATE MACHINE ============ -->
+<section class="module alt" id="m-tap">
+  <div class="eyebrow">Module 04</div>
+  <h2>The TAP controller — a 16-state traffic controller</h2>
+  <p class="dek">Every JTAG operation is really just: steer the TAP into the right state using TMS, then let TCK do its job. Click any state below.</p>
+
+  <div class="panel">
+    <svg id="tapsvg" viewBox="0 0 760 430" style="width:100%; height:auto;"></svg>
+  </div>
+
+  <div class="statebox" id="tap-info">
+    <h4 id="tap-info-title">Test-Logic-Reset</h4>
+    <p id="tap-info-body">All test logic is disabled here; the chip behaves as its normal functional mode. This is the safe starting point.</p>
+    <div class="meta">
+      <span>TMS=0 → <b id="tap-next0">Run-Test/Idle</b></span>
+      <span>TMS=1 → <b id="tap-next1">Test-Logic-Reset</b></span>
+      <span>Shifting? <b id="tap-shifting">No</b></span>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px;">
+    <div class="reglabel">Drive it yourself</div>
+    <div class="btnrow">
+      <button class="btn" onclick="tapStep(0)">TMS = 0, pulse TCK</button>
+      <button class="btn" onclick="tapStep(1)">TMS = 1, pulse TCK</button>
+      <button class="btn" onclick="tapReset()">Force Test-Logic-Reset</button>
+    </div>
+    <table class="spec">
+      <tr><th>Current State</th><th>TMS</th><th>Next State</th></tr>
+      <tr><td>Test-Logic-Reset</td><td>0</td><td>Run-Test/Idle</td></tr>
+      <tr><td>Run-Test/Idle</td><td>1</td><td>Select-DR-Scan</td></tr>
+      <tr><td>Select-DR-Scan</td><td>0</td><td>Capture-DR</td></tr>
+      <tr><td>Select-DR-Scan</td><td>1</td><td>Select-IR-Scan</td></tr>
+    </table>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px;">That's an excerpt, not the whole machine — the diagram above is the complete IEEE 1149.1 state graph, kept as a permanent interactive reference.</p>
+  </div>
+</section>
+
+<!-- ============ 05 IR/DR + Boundary scan ============ -->
+<section class="module" id="m-irdr">
+  <div class="eyebrow">Module 05</div>
+  <h2>Instruction Register, Data Registers, and Boundary Scan</h2>
+  <p class="dek">The instruction you load decides which data register sits between TDI and TDO.</p>
+
+  <div class="panel">
+    <div class="flow">
+      <div class="node">TDI</div><div class="arrow">→</div>
+      <div class="node" id="ir-node">Instruction Register</div><div class="arrow">→</div>
+      <div class="node">Decoder</div><div class="arrow">→</div>
+      <div class="node" id="dr-node">Selected Data Register</div><div class="arrow">→</div>
+      <div class="node">TDO</div>
+    </div>
+    <div class="btnrow">
+      <button class="btn" onclick="selectInstr('BYPASS')">Load BYPASS</button>
+      <button class="btn" onclick="selectInstr('IDCODE')">Load IDCODE</button>
+      <button class="btn" onclick="selectInstr('EXTEST')">Load EXTEST</button>
+      <button class="btn" onclick="selectInstr('SAMPLE')">Load SAMPLE/PRELOAD</button>
+    </div>
+    <div class="callout" id="instr-explain">Select an instruction to see which data register gets placed in the scan path. (These four are typical examples — exact instruction encodings are implementation-specific.)</div>
+
+    <div class="grid2" style="margin-top:14px;">
+      <div>
+        <div class="reglabel">Capture · Shift · Update</div>
+        <div class="btnrow">
+          <button class="btn small" onclick="csuStep('capture')">Capture</button>
+          <button class="btn small" onclick="csuStep('shift')">Shift</button>
+          <button class="btn small" onclick="csuStep('update')">Update</button>
+        </div>
+        <div class="reg" id="csu-reg"></div>
+        <p id="csu-desc" style="font-size:12.5px;color:var(--muted);margin-top:8px;">Capture loads live values into the register; Shift moves bits toward TDO while new bits enter from TDI; Update pushes the shifted-in value out to where it takes effect.</p>
+      </div>
+      <div>
+        <div class="reglabel">Boundary scan — catching a board-level fault</div>
+        <svg viewBox="0 0 300 130" style="width:100%">
+          <rect x="10" y="20" width="90" height="90" rx="6" fill="#161f2c" stroke="#232f40"/>
+          <text x="30" y="14" fill="#7c8aa0" font-size="10">CHIP A</text>
+          <rect x="200" y="20" width="90" height="90" rx="6" fill="#161f2c" stroke="#232f40"/>
+          <text x="220" y="14" fill="#7c8aa0" font-size="10">CHIP B</text>
+          <line id="bscan-wire" x1="100" y1="65" x2="200" y2="65" stroke="#3a4a5e" stroke-width="2"/>
+          <circle id="bscan-dot" cx="100" cy="65" r="4" fill="#6ef5c5"/>
+          <rect x="20" y="55" width="14" height="14" fill="#0e141d" stroke="#6ef5c5" rx="2"/>
+          <rect x="250" y="55" width="14" height="14" fill="#0e141d" stroke="#6ef5c5" rx="2"/>
+        </svg>
+        <div class="btnrow">
+          <button class="btn small" onclick="runBoundary(false)">Drive good interconnect</button>
+          <button class="btn small" onclick="runBoundary(true)">Drive faulty interconnect</button>
+        </div>
+        <div class="callout" id="bscan-result" style="font-size:12.5px;">Boundary cells at each pin can drive a known value (EXTEST) and the neighbor chip's cell can sample what actually arrived (SAMPLE) — catching open/short board faults without any functional traffic.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 WHY IJTAG ============ -->
+<section class="module alt" id="m-whyij">
+  <div class="eyebrow">Module 06</div>
+  <h2>One TAP, dozens of instruments — now what?</h2>
+  <p class="dek">A real SoC might have twenty embedded instruments. Chaining every one directly into one giant fixed scan path is rigid and wasteful — most instruments aren't needed on most test runs.</p>
+  <div class="panel">
+    <div class="flow" style="flex-wrap:wrap;">
+      <div class="node">CPU</div><div class="node">GPU</div><div class="node">Memory</div><div class="node">MBIST</div>
+      <div class="node">PLL Monitor</div><div class="node">Temp Sensor</div><div class="node">Voltage Sensor</div><div class="node">Debug</div><div class="node">Logic Analyzer</div>
+    </div>
+    <div class="callout why">We need a network where segments can be <b>inserted or skipped on demand</b>, so the active scan path is only as long as it needs to be for the instrument you actually want. That's IEEE 1687 — IJTAG.</div>
+  </div>
+</section>
+
+<!-- ============ 07 IJTAG NETWORK ============ -->
+<section class="module" id="m-network">
+  <div class="eyebrow">Module 07</div>
+  <h2>The IJTAG network, end to end</h2>
+  <p class="dek">This is the reference chip we'll reuse for every remaining module. Click any block.</p>
+  <div class="panel">
+    <svg id="netsvg" viewBox="0 0 720 260" style="width:100%; height:auto;"></svg>
+    <div class="statebox" id="net-info">
+      <h4 id="net-info-title">Click a block above</h4>
+      <p id="net-info-body">The network sits behind the JTAG TAP. TDI/TDO from the TAP's data-register path feed straight into the first SIB.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 08 SIB ============ -->
+<section class="module alt" id="m-sib">
+  <div class="eyebrow">Module 08</div>
+  <h2>SIB — the Segment Insertion Bit</h2>
+  <p class="dek beginner-only">Think of a SIB as a locked gate on a hallway. Closed, you walk straight past it. Open it, and a whole side-room becomes part of your path.</p>
+  <p class="dek tech-only">A SIB is itself a 1-bit register in the scan path. Its value, established through capture/shift/update like any other bit, determines whether a downstream segment is included in the active scan chain.</p>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="reglabel">The gate</div>
+      <div class="gate-wrap">
+        <div class="gate closed" id="sib-gate">0</div>
+        <svg viewBox="0 0 260 60" width="260" height="60">
+          <text x="0" y="15" fill="#7c8aa0" font-size="10">TDI</text>
+          <line x1="30" y1="30" x2="90" y2="30" stroke="#3a4a5e" stroke-width="2"/>
+          <text x="160" y="15" fill="#7c8aa0" font-size="10" id="sib-branch-label">segment bypassed</text>
+          <line id="sib-branch" x1="130" y1="30" x2="130" y2="55" stroke="#2a3644" stroke-width="2" stroke-dasharray="3,3"/>
+          <line x1="170" y1="30" x2="230" y2="30" stroke="#3a4a5e" stroke-width="2"/>
+          <text x="238" y="15" fill="#7c8aa0" font-size="10">TDO</text>
+        </svg>
+      </div>
+      <div class="btnrow">
+        <button class="btn small" onclick="sibDo('capture')">1. Capture</button>
+        <button class="btn small" onclick="sibDo('shift')">2. Shift new value</button>
+        <button class="btn small" onclick="sibDo('update')">3. Update</button>
+        <button class="btn small" onclick="sibDo('reset')">Reset</button>
+      </div>
+      <div class="callout" id="sib-step-desc">Step through Capture → Shift → Update to actually change the SIB's committed value — clicking the gate doesn't just toggle a mux.</div>
+    </div>
+
+    <div class="panel">
+      <div class="reglabel">Effect on the active path</div>
+      <div class="flow" id="sib-path" style="flex-wrap:wrap;"></div>
+      <div class="legend">
+        <span><i style="background:var(--hi)"></i>active</span>
+        <span><i style="background:var(--muted2)"></i>bypassed</span>
+      </div>
+      <div class="callout internal" style="margin-top:12px;">SIB = 0 → downstream segment not inserted, scan path stays short.<br>SIB = 1 → downstream segment inserted, instrument becomes reachable, scan path gets longer.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 MULTIPLE SIBS ============ -->
+<section class="module" id="m-hier">
+  <div class="eyebrow">Module 09</div>
+  <h2>Multiple SIBs — the path changes shape</h2>
+  <p class="dek">Pick an instrument. Watch which SIBs must open, and how long the active path becomes.</p>
+  <div class="panel">
+    <div class="btnrow">
+      <button class="btn" onclick="pickInstrument('mbist')">Access MBIST</button>
+      <button class="btn" onclick="pickInstrument('sensor')">Access Sensor</button>
+      <button class="btn" onclick="pickInstrument('debug')">Access Debug</button>
+      <button class="btn" onclick="pickInstrument(null)">Everything closed</button>
+    </div>
+    <svg id="hiersvg" viewBox="0 0 720 180" style="width:100%; height:auto;"></svg>
+    <div class="statebox">
+      <div class="meta">
+        <span>Instrument selected: <b id="hier-instr">none</b></span>
+        <span>Active path: <b id="hier-path" class="mono">TDI → SIB1 → SIB2 → SIB3 → TDO</b></span>
+        <span>Scan length: <b id="hier-len">4 stages</b></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 ICL vs PDL ============ -->
+<section class="module alt" id="m-icl-pdl">
+  <div class="eyebrow">Module 10</div>
+  <h2>ICL describes the map. PDL describes the trip.</h2>
+  <div class="grid2">
+    <div class="panel">
+      <div class="reglabel">ICL — Instrument Connectivity Language</div>
+      <p style="font-size:13px;color:var(--muted);">"What exists, and how is it wired?" ICL describes modules, ports, scan registers, SIBs, instruments, and the connections between them.</p>
+      <pre class="mono" style="background:#0e141d;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11.5px;overflow-x:auto;">// simplified educational example
+ScanRegister sib1 { length 1; SIB { ... } }
+ScanInterface mbist_if {
+  ScanInPort si; ScanOutPort so;
+}
+Instance mbist_inst of MBIST {
+  connect(mbist_if.si, sib1.so);
+}</pre>
+      <p style="font-size:11.5px;color:var(--muted2);">Simplified for teaching — not literal Accellera ICL / IEEE 1687 syntax.</p>
+    </div>
+    <div class="panel">
+      <div class="reglabel">PDL — Procedural Description Language</div>
+      <p style="font-size:13px;color:var(--muted);">"What operation do I run, in what order?" PDL describes the procedure for using an instrument: open the right SIB, write control, wait, read status.</p>
+      <pre class="mono" style="background:#0e141d;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11.5px;overflow-x:auto;">// simplified educational example
+iProcedure run_mbist {
+  iWrite sib1 = 1;       // open SIB
+  iWrite mbist.CONTROL = START;
+  iApply;
+  iRead  mbist.STATUS == PASS;
+}</pre>
+      <p style="font-size:11.5px;color:var(--muted2);">Simplified for teaching — not literal IEEE 1687 PDL syntax.</p>
+    </div>
+  </div>
+  <div class="callout">Analogy: <b>ICL is the map of the building</b> — rooms and hallways. <b>PDL is the instructions for walking to a specific room and flipping a specific switch.</b> A retargeting tool reads both to figure out how to reach an instrument once it's buried inside a bigger integrated chip.</div>
+</section>
+
+<!-- ============ 11 END TO END ============ -->
+<section class="module" id="m-e2e">
+  <div class="eyebrow">Module 11</div>
+  <h2>Complete sequence: tester → TAP → IJTAG → MBIST → TDO</h2>
+  <p class="dek">One continuous operation: run MBIST and read back PASS. Step through every phase.</p>
+  <div class="panel">
+    <div class="btnrow">
+      <button class="btn primary" onclick="e2eNext()">▶ Next phase</button>
+      <button class="btn" onclick="e2eReset()">Reset</button>
+    </div>
+    <div class="statebox">
+      <h4 id="e2e-phase-title">Ready</h4>
+      <p id="e2e-phase-body">Click "Next phase" to begin the MBIST access sequence.</p>
+      <div class="meta">
+        <span>TAP state: <b id="e2e-tap">Test-Logic-Reset</b></span>
+        <span>SIB1: <b id="e2e-sib">0</b></span>
+        <span><span class="pill control">control</span> START=<b id="e2e-control">–</b></span>
+        <span><span class="pill status">status</span> <b id="e2e-status">–</b></span>
+      </div>
+    </div>
+    <div class="reglabel" style="margin-top:14px;">Waveform (click a cycle to inspect)</div>
+    <div id="e2e-wave"></div>
+    <div class="callout internal" id="e2e-internal">"What's happening internally" appears here as you step through phases.</div>
+  </div>
+</section>
+
+<!-- ============ 12 DEBUG ============ -->
+<section class="module alt" id="m-debug">
+  <div class="eyebrow">Module 12</div>
+  <h2>When it doesn't come back right</h2>
+  <div class="panel">
+    <div class="btnrow">
+      <button class="btn" onclick="showDebug(0)">SIB not opened</button>
+      <button class="btn" onclick="showDebug(1)">Wrong TAP state</button>
+      <button class="btn" onclick="showDebug(2)">Wrong instruction loaded</button>
+      <button class="btn" onclick="showDebug(3)">Incorrect scan length</button>
+    </div>
+    <div class="statebox" id="debug-box">
+      <h4>Pick a scenario</h4>
+      <p>Each one shows the expected vs. actual path, the likely cause, and the fix.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13 QUIZ ============ -->
+<section class="module" id="m-quiz">
+  <div class="eyebrow">Module 13</div>
+  <h2>Knowledge check</h2>
+  <div id="quiz-container"></div>
+</section>
+
+<!-- ============ 14 GLOSSARY ============ -->
+<section class="module alt" id="m-glossary">
+  <div class="eyebrow">Module 14</div>
+  <h2>Glossary</h2>
+  <input class="search-box" placeholder="Filter terms…" oninput="filterGlossary(this.value)">
+  <dl id="glossary-list"></dl>
+</section>
+
+<!-- ============ 15 CHEAT SHEET ============ -->
+<footer class="cheat" id="m-cheatsheet">
+  <div class="eyebrow">Reference</div>
+  <h2>Final architecture cheat sheet</h2>
+  <div class="cheat-diagram">
+    <div class="flow" style="flex-direction:column; align-items:flex-start; gap:4px;">
+      <div class="node">EXTERNAL TESTER</div><div class="arrow">↓ TDI / TDO / TMS / TCK</div>
+      <div class="node">JTAG TAP</div><div class="arrow">↓</div>
+      <div class="node">JTAG Data Path</div><div class="arrow">↓</div>
+      <div class="node">IJTAG NETWORK</div><div class="arrow">↓</div>
+      <div style="display:flex; gap:8px;"><div class="node">SIB → MBIST</div><div class="node">SIB → Sensor</div><div class="node">SIB → Debug</div></div>
+      <div class="arrow">↓ (inside MBIST)</div>
+      <div style="display:flex; gap:8px;"><div class="node"><span class="pill control">control</span> START=1</div><div class="node"><span class="pill status">status</span> RUNNING → PASS/FAIL</div></div>
+      <div class="arrow">↓</div>
+      <div class="node">TDO</div>
+    </div>
+    <table class="spec" style="margin-top:20px;">
+      <tr><td>JTAG</td><td>External test access via the TAP (IEEE 1149.1)</td></tr>
+      <tr><td>IJTAG</td><td>Internal embedded-instrument access (IEEE 1687)</td></tr>
+      <tr><td>SIB</td><td>Controls insertion of a scan segment</td></tr>
+      <tr><td>ICL</td><td>Describes connectivity — the map</td></tr>
+      <tr><td>PDL</td><td>Describes procedures — the directions</td></tr>
+      <tr><td>Retargeting</td><td>Maps an instrument-level procedure onto the actual integrated-chip access path</td></tr>
+    </table>
+  </div>
+</footer>
+
+</main>
+</div>
+
+<!-- signature bench status bar -->
+<div class="bench">
+  <span class="brandmark">BENCH ▸</span>
+  <span class="led"><span class="lamp" id="lamp-tck"></span><span class="label">TCK</span></span>
+  <span class="led"><span class="lamp" id="lamp-tms"></span><span class="label">TMS</span> <span class="val" id="val-tms">0</span></span>
+  <span class="led"><span class="lamp" id="lamp-tdi"></span><span class="label">TDI</span> <span class="val" id="val-tdi">0</span></span>
+  <span class="led"><span class="lamp" id="lamp-tdo"></span><span class="label">TDO</span> <span class="val" id="val-tdo">–</span></span>
+  <span class="led"><span class="label">TAP</span> <span class="val" id="val-tap">Test-Logic-Reset</span></span>
+  <span class="led"><span class="label">SIB1</span> <span class="lamp" id="lamp-sib"></span></span>
+  <span class="led"><span class="label">INSTR</span> <span class="val" id="val-instr">none</span></span>
+  <span class="led"><span class="lamp ctrl" id="lamp-ctrl"></span><span class="label">CTRL</span> <span class="val" id="val-ctrl">–</span></span>
+  <span class="led"><span class="label">STATUS</span> <span class="val" id="val-status">–</span></span>
+</div>
+
+<script>
+/* ========================= GLOBAL BENCH STATE ========================= */
+const bench = { tck:0, tms:0, tdi:0, tdo:null, tap:'Test-Logic-Reset', sib:0, instr:'none', ctrl:null, status:null };
+function paintBench(){
+  document.getElementById('val-tms').textContent = bench.tms;
+  document.getElementById('val-tdi').textContent = bench.tdi;
+  document.getElementById('val-tdo').textContent = bench.tdo===null? '–' : bench.tdo;
+  document.getElementById('val-tap').textContent = bench.tap;
+  document.getElementById('val-instr').textContent = bench.instr;
+  document.getElementById('val-ctrl').textContent = bench.ctrl===null? '–' : bench.ctrl;
+  document.getElementById('val-status').textContent = bench.status===null? '–' : bench.status;
+  document.getElementById('lamp-tms').classList.toggle('on', bench.tms===1);
+  document.getElementById('lamp-tdi').classList.toggle('on', bench.tdi===1);
+  document.getElementById('lamp-tdo').classList.toggle('on', bench.tdo===1);
+  document.getElementById('lamp-sib').classList.toggle('on', bench.sib===1);
+  document.getElementById('lamp-ctrl').classList.toggle('on', bench.ctrl==='START');
+}
+function tickTck(){
+  const lamp=document.getElementById('lamp-tck');
+  lamp.classList.add('on'); setTimeout(()=>lamp.classList.remove('on'),180);
+}
+paintBench();
+
+/* ========================= MODE TOGGLE ========================= */
+function setMode(m){
+  document.body.classList.toggle('mode-technical', m==='technical');
+  document.getElementById('btn-beginner').classList.toggle('active', m==='beginner');
+  document.getElementById('btn-technical').classList.toggle('active', m==='technical');
+}
+
+/* ========================= PROGRESS TRACKING ========================= */
+const moduleIds = ['m-problem','m-vs','m-basics','m-tap','m-irdr','m-whyij','m-network','m-sib','m-hier','m-icl-pdl','m-e2e','m-debug'];
+const visited = new Set();
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      visited.add(e.target.id);
+      document.querySelectorAll(`.navtop[data-m="${e.target.id}"]`).forEach(a=>a.classList.add('done'));
+      updateProgress();
+    }
+  });
+},{threshold:0.35});
+moduleIds.forEach(id=>{ const el=document.getElementById(id); if(el) io.observe(el); });
+function updateProgress(){
+  const pct = Math.round(100*visited.size/moduleIds.length);
+  document.getElementById('progress-fill').style.width = pct+'%';
+  document.getElementById('progress-label').textContent = `${visited.size} / ${moduleIds.length} modules visited`;
+}
+
+/* ========================= 01 SOC PROBLEM ========================= */
+const socBlocksData = [
+  {name:'CPU', x:70, y:50}, {name:'Memory', x:70, y:110}, {name:'MBIST', x:70, y:170},
+  {name:'Sensor', x:480, y:50}, {name:'PLL', x:480, y:110}, {name:'Debug', x:480, y:170}
+];
+function drawSoc(){
+  const g = document.getElementById('soc-blocks');
+  const sg = document.getElementById('soc-signals');
+  g.innerHTML=''; sg.innerHTML='';
+  socBlocksData.forEach((b,i)=>{
+    g.innerHTML += `<rect x="${b.x}" y="${b.y}" width="90" height="34" rx="5" fill="#161f2c" stroke="#232f40"/>
+      <text x="${b.x+45}" y="${b.y+21}" text-anchor="middle" fill="#dfe9f2" font-size="11">${b.name}</text>`;
+  });
+  g.innerHTML += `<rect x="290" y="105" width="60" height="30" rx="5" fill="#0e141d" stroke="#586376" stroke-dasharray="2,2"/>
+    <text x="320" y="124" text-anchor="middle" fill="#7c8aa0" font-size="9">2 pins</text>`;
+}
+drawSoc();
+function animateSoc(){
+  const sg = document.getElementById('soc-signals');
+  sg.innerHTML='';
+  socBlocksData.forEach((b,i)=>{
+    const fromX = b.x < 300 ? b.x+90 : b.x;
+    const fromY = b.y+17;
+    const toX = 320;
+    const toY = 120;
+    const path = document.createElementNS('http://www.w3.org/2000/svg','line');
+    path.setAttribute('x1', fromX); path.setAttribute('y1', fromY);
+    path.setAttribute('x2', fromX); path.setAttribute('y2', fromY);
+    path.setAttribute('stroke', '#ff6b6b'); path.setAttribute('stroke-width','1.6');
+    sg.appendChild(path);
+    setTimeout(()=>{
+      path.setAttribute('x2', toX); path.setAttribute('y2', toY);
+      path.style.transition = 'all .5s ease';
+    }, 60*i);
+  });
+  setTimeout(()=>{
+    document.getElementById('soc-callout').innerHTML = "<b>Gridlock.</b> Six blocks, two shared pins — signals collide, and there's no way to tell which block's data is on the wire. Direct wiring doesn't scale past a couple of test signals.";
+  }, 60*socBlocksData.length + 550);
+}
+function resetSoc(){ drawSoc(); document.getElementById('soc-callout').textContent='Click the button — watch six internal blocks each try to fight their way to a handful of external pins.'; }
+
+/* ========================= 03 SHIFT REGISTER ========================= */
+let shiftBits = [0,1,0,1];
+const tdiSeq = [1,1,0,1,0,1,1,0];
+let tdiIdx = 0;
+function drawShift(){
+  const el = document.getElementById('shift-reg');
+  el.innerHTML = shiftBits.map(b=>`<div class="bit ${b?'one':''}">${b}</div>`).join('');
+}
+drawShift();
+function shiftOnce(){
+  tickTck();
+  const tdiVal = tdiSeq[tdiIdx % tdiSeq.length]; tdiIdx++;
+  const tdo = shiftBits[shiftBits.length-1];
+  shiftBits = [tdiVal, ...shiftBits.slice(0, shiftBits.length-1)];
+  drawShift();
+  document.getElementById('tdo-out').textContent = tdo;
+  document.getElementById('tdi-queue').textContent = tdiSeq[tdiIdx % tdiSeq.length];
+  bench.tdi = tdiVal; bench.tdo = tdo; paintBench();
+}
+function resetShift(){ shiftBits=[0,1,0,1]; tdiIdx=0; drawShift(); document.getElementById('tdo-out').textContent='–'; document.getElementById('tdi-queue').textContent='1'; }
+
+/* ========================= 04 TAP STATE MACHINE ========================= */
+const tapStates = {
+  'Test-Logic-Reset': {x:60,y:200, 0:'Run-Test/Idle', 1:'Test-Logic-Reset', shifting:false,
+    desc:'All test logic is disabled here; the chip behaves as its normal functional mode. This is the safe starting point — reachable from any state by holding TMS=1 for five TCK cycles.'},
+  'Run-Test/Idle': {x:200,y:200, 0:'Run-Test/Idle', 1:'Select-DR-Scan', shifting:false,
+    desc:'Idle. Test logic is active but nothing is shifting. Some instruments (like BIST) actually run while parked here.'},
+  'Select-DR-Scan': {x:340,y:130, 0:'Capture-DR', 1:'Select-IR-Scan', shifting:false,
+    desc:'A one-cycle fork: TMS=0 heads into the data-register path, TMS=1 heads into the instruction-register path instead.'},
+  'Capture-DR': {x:340,y:70, 0:'Shift-DR', 1:'Exit1-DR', shifting:false,
+    desc:'The selected data register loads a parallel snapshot — e.g. sampling pin values or an instrument\\'s live status — in one clock.'},
+  'Shift-DR': {x:460,y:70, 0:'Shift-DR', 1:'Exit1-DR', shifting:true,
+    desc:'Every TCK shifts the data register one position: a bit enters from TDI, a bit leaves on TDO. This is where real data movement happens.'},
+  'Exit1-DR': {x:580,y:70, 0:'Pause-DR', 1:'Update-DR', shifting:false,
+    desc:'A junction: pause the shift (TMS=0) or go commit the shifted value (TMS=1).'},
+  'Pause-DR': {x:580,y:20, 0:'Pause-DR', 1:'Exit2-DR', shifting:false,
+    desc:'Shifting is frozen — useful if the tester needs to reload a buffer without losing its place mid-scan.'},
+  'Exit2-DR': {x:460,y:20, 0:'Shift-DR', 1:'Update-DR', shifting:false,
+    desc:'Resume shifting (TMS=0) or move to commit (TMS=1).'},
+  'Update-DR': {x:340,y:20, 0:'Run-Test/Idle', 1:'Select-DR-Scan', shifting:false,
+    desc:'The shifted-in value is latched to where it takes effect — e.g. a SIB actually opening, or an instrument\\'s control register actually updating.'},
+  'Select-IR-Scan': {x:340,y:340, 0:'Capture-IR', 1:'Test-Logic-Reset', shifting:false,
+    desc:'Entry point to the instruction-register path — the mirror image of the DR path.'},
+  'Capture-IR': {x:460,y:340, 0:'Shift-IR', 1:'Exit1-IR', shifting:false,
+    desc:'The instruction register captures a fixed status pattern in most implementations.'},
+  'Shift-IR': {x:580,y:340, 0:'Shift-IR', 1:'Exit1-IR', shifting:true,
+    desc:'The new instruction shifts in bit by bit, replacing whatever instruction was previously loaded.'},
+  'Exit1-IR': {x:700,y:340, 0:'Pause-IR', 1:'Update-IR', shifting:false,
+    desc:'Pause the shift or move on to commit the new instruction.'},
+  'Pause-IR': {x:700,y:390, 0:'Pause-IR', 1:'Exit2-IR', shifting:false,
+    desc:'Instruction shifting frozen mid-way.'},
+  'Exit2-IR': {x:580,y:390, 0:'Shift-IR', 1:'Update-IR', shifting:false,
+    desc:'Resume shifting or move to commit.'},
+  'Update-IR': {x:460,y:390, 0:'Run-Test/Idle', 1:'Select-DR-Scan', shifting:false,
+    desc:'The new instruction becomes active — the decoder now selects a different data register for the next DR scan.'},
+};
+let tapCurrent = 'Test-Logic-Reset';
+function drawTap(){
+  const svg = document.getElementById('tapsvg');
+  let html = `<defs><marker id="arrow2" markerWidth="7" markerHeight="7" refX="6" refY="2.5" orient="auto"><path d="M0,0L6,2.5L0,5Z" fill="#4a5a70"/></marker></defs>`;
+  // edges
+  Object.entries(tapStates).forEach(([name, s])=>{
+    [0,1].forEach(tms=>{
+      const to = s[tms];
+      const t = tapStates[to];
+      const active = (tapCurrent===name);
+      const dx = t.x-s.x, dy=t.y-s.y; const len=Math.hypot(dx,dy)||1;
+      const ox = dx/len*34, oy=dy/len*16;
+      html += `<line class="edge ${active?'active':''}" x1="${s.x+ox}" y1="${s.y+oy}" x2="${t.x-ox}" y2="${t.y-oy}" marker-end="url(#arrow2)"/>`;
+    });
+  });
+  // nodes
+  Object.entries(tapStates).forEach(([name,s])=>{
+    const active = tapCurrent===name;
+    html += `<g onclick="tapJump('${name}')" style="cursor:pointer;">
+      <rect class="st ${active?'active':''}" x="${s.x-34}" y="${s.y-14}" width="68" height="28" rx="6"/>
+      <text class="stlabel" x="${s.x}" y="${s.y+4}" text-anchor="middle">${name}</text>
+    </g>`;
+  });
+  svg.innerHTML = html;
+}
+function tapJump(name){ tapCurrent=name; drawTap(); showTapInfo(); }
+function showTapInfo(){
+  const s = tapStates[tapCurrent];
+  document.getElementById('tap-info-title').textContent = tapCurrent;
+  document.getElementById('tap-info-body').textContent = s.desc;
+  document.getElementById('tap-next0').textContent = s[0];
+  document.getElementById('tap-next1').textContent = s[1];
+  document.getElementById('tap-shifting').textContent = s.shifting ? 'Yes — bits move on TCK' : 'No';
+  bench.tap = tapCurrent; paintBench();
+}
+function tapStep(tms){
+  tickTck();
+  bench.tms = tms; paintBench();
+  tapCurrent = tapStates[tapCurrent][tms];
+  drawTap(); showTapInfo();
+}
+function tapReset(){ tapCurrent='Test-Logic-Reset'; drawTap(); showTapInfo(); }
+drawTap(); showTapInfo();
+
+/* ========================= 05 IR/DR ========================= */
+const instrMap = {
+  BYPASS: 'A single-bit register — data just passes through with one clock of delay. Used to skip a device in a longer chain.',
+  IDCODE: 'A fixed register holding the device\\'s identifier — lets a tester confirm what chip it\\'s talking to.',
+  EXTEST: 'Selects the boundary-scan register and drives its output cells onto the pins — used for board interconnect test.',
+  SAMPLE: 'Selects the boundary-scan register in sampling mode — captures pin values without disturbing functional operation.'
+};
+function selectInstr(name){
+  document.getElementById('dr-node').textContent = name==='BYPASS' ? 'Bypass Register (1 bit)' :
+    name==='IDCODE' ? 'IDCODE Register' : 'Boundary Scan Register';
+  document.getElementById('dr-node').classList.add('on');
+  setTimeout(()=>document.getElementById('dr-node').classList.remove('on'), 900);
+  document.getElementById('instr-explain').innerHTML = `<b>${name}:</b> ${instrMap[name]}`;
+}
+let csuBits = [0,0,0,0];
+function drawCsu(){ document.getElementById('csu-reg').innerHTML = csuBits.map(b=>`<div class="bit ${b?'one':''}">${b}</div>`).join(''); }
+drawCsu();
+function csuStep(step){
+  if(step==='capture'){ csuBits = [1,0,1,1]; document.getElementById('csu-desc').textContent='Capture: live values (e.g. instrument status) are loaded in parallel into the register.'; }
+  if(step==='shift'){ csuBits = [1,1,0,1]; document.getElementById('csu-desc').textContent='Shift: the register moves one place toward TDO each TCK, with a new TDI bit entering.'; }
+  if(step==='update'){ document.getElementById('csu-desc').textContent='Update: the shifted-in value is latched out to wherever it takes effect (a control register, a SIB, a pin driver).'; }
+  drawCsu();
+}
+function runBoundary(faulty){
+  const dot = document.getElementById('bscan-dot');
+  const wire = document.getElementById('bscan-wire');
+  wire.setAttribute('stroke', faulty ? '#ff6b6b' : '#3a4a5e');
+  dot.setAttribute('cx', 100);
+  let x=100;
+  const iv = setInterval(()=>{
+    x+=6; dot.setAttribute('cx', Math.min(x, faulty?150:200));
+    if(x>=200 || (faulty && x>=150)) clearInterval(iv);
+  },20);
+  document.getElementById('bscan-result').innerHTML = faulty
+    ? '<b>Fault caught:</b> EXTEST drove a known value from Chip A, but Chip B\\'s SAMPLE capture never saw it arrive — an open or short on the board interconnect, found with zero functional traffic.'
+    : '<b>Good interconnect:</b> Chip A\\'s boundary cell drove the value, Chip B\\'s boundary cell captured the same value — the solder joint and trace are sound.';
+}
+
+/* ========================= 07 IJTAG NETWORK ========================= */
+const netInfo = {
+  TAP: 'The JTAG TAP is the on-ramp: an external tester steers it into a DR-scan, and whatever comes out on TDI/TDO from that point on belongs to the IJTAG network.',
+  SIB1: 'SIB1 gates access to MBIST. Closed, MBIST is invisible to the scan chain; opened, it\\'s inserted.',
+  SIB2: 'SIB2 gates access to the Sensor instrument.',
+  SIB3: 'SIB3 gates access to the Debug instrument.',
+  MBIST: 'An embedded memory-test controller with CONTROL, STATUS, ADDRESS and DATA registers — reachable only when SIB1 is open.',
+  SENSOR: 'A temperature or voltage sensor exposing a readable measurement register.',
+  DEBUG: 'A debug/trace instrument exposing configuration and trace-capture registers.'
+};
+function drawNet(){
+  const svg = document.getElementById('netsvg');
+  svg.innerHTML = `
+    <text x="10" y="16" fill="#586376" font-size="10">EXTERNAL ACCESS</text>
+    <rect onclick="netClick('TAP')" x="10" y="30" width="90" height="34" rx="6" class="st" fill="#161f2c" stroke="#232f40" style="cursor:pointer"/>
+    <text x="55" y="51" text-anchor="middle" fill="#dfe9f2" font-size="11" style="pointer-events:none">JTAG/TAP</text>
+    <line x1="100" y1="47" x2="150" y2="47" stroke="#3a4a5e" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="120" y="90" fill="#7c8aa0" font-size="9">TDI</text>
+
+    <rect x="150" y="20" width="500" height="150" rx="8" fill="#0e141d" stroke="#232f40" stroke-dasharray="3,3"/>
+    <text x="160" y="14" fill="#6ef5c5" font-size="10">IJTAG NETWORK</text>
+
+    ${['SIB1','SIB2','SIB3'].map((s,i)=>`
+      <rect onclick="netClick('${s}')" x="${200+i*140}" y="45" width="70" height="30" rx="16" class="st" fill="#161f2c" stroke="#232f40" style="cursor:pointer"/>
+      <text x="${235+i*140}" y="65" text-anchor="middle" fill="#dfe9f2" font-size="11" style="pointer-events:none">${s}</text>
+      <line x1="${235+i*140}" y1="75" x2="${235+i*140}" y2="110" stroke="#3a4a5e" stroke-width="1.6" marker-end="url(#arrow)"/>
+    `).join('')}
+    ${['MBIST','SENSOR','DEBUG'].map((s,i)=>`
+      <rect onclick="netClick('${s}')" x="${200+i*140}" y="115" width="70" height="34" rx="6" class="st" fill="#161f2c" stroke="#232f40" style="cursor:pointer"/>
+      <text x="${235+i*140}" y="136" text-anchor="middle" fill="#dfe9f2" font-size="10" style="pointer-events:none">${s}</text>
+    `).join('')}
+    ${[0,1].map(i=>`<line x1="${270+i*140}" y1="60" x2="${200+(i+1)*140}" y2="60" stroke="#3a4a5e" stroke-width="1.6" marker-end="url(#arrow)"/>`).join('')}
+
+    <line x1="650" y1="60" x2="700" y2="60" stroke="#3a4a5e" stroke-width="1.6" marker-end="url(#arrow)"/>
+    <text x="700" y="90" fill="#7c8aa0" font-size="9" text-anchor="end">TDO</text>
+  `;
+}
+function netClick(name){
+  document.getElementById('net-info-title').textContent = name;
+  document.getElementById('net-info-body').textContent = netInfo[name];
+}
+drawNet();
+
+/* ========================= 08 SIB SIMULATOR ========================= */
+let sibCommitted = 0, sibShiftReg = 0, sibStage='idle';
+function sibDo(action){
+  if(action==='reset'){ sibCommitted=0; sibShiftReg=0; sibStage='idle'; renderSib(); document.getElementById('sib-step-desc').textContent='Reset. Step through Capture → Shift → Update.'; return; }
+  tickTck();
+  if(action==='capture'){ sibShiftReg = sibCommitted; sibStage='captured';
+    document.getElementById('sib-step-desc').textContent = `Capture: the SIB's current committed value (${sibCommitted}) is loaded into the shift stage.`; }
+  if(action==='shift'){ sibShiftReg = sibShiftReg===0?1:0; sibStage='shifted'; bench.tdi = sibShiftReg;
+    document.getElementById('sib-step-desc').textContent = `Shift: a new value (${sibShiftReg}) has been shifted in from TDI — but the gate hasn't changed yet.`; }
+  if(action==='update'){ sibCommitted = sibShiftReg; sibStage='updated'; bench.sib = sibCommitted;
+    document.getElementById('sib-step-desc').textContent = `Update: the shifted value is committed. The SIB is now ${sibCommitted? 'OPEN — segment inserted.':'CLOSED — segment bypassed.'}`; }
+  renderSib();
+  paintBench();
+}
+function renderSib(){
+  const gate = document.getElementById('sib-gate');
+  gate.textContent = sibCommitted;
+  gate.className = 'gate ' + (sibCommitted? 'open':'closed');
+  document.getElementById('sib-branch').setAttribute('stroke', sibCommitted? '#6ef5c5':'#2a3644');
+  document.getElementById('sib-branch').setAttribute('stroke-dasharray', sibCommitted? '0':'3,3');
+  document.getElementById('sib-branch-label').textContent = sibCommitted? 'segment inserted':'segment bypassed';
+  const flow = document.getElementById('sib-path');
+  flow.innerHTML = sibCommitted
+    ? `<div class="node on">TDI</div><div class="arrow">→</div><div class="node on">SIB</div><div class="arrow">→</div><div class="node on">Instrument</div><div class="arrow">→</div><div class="node on">TDO</div>`
+    : `<div class="node on">TDI</div><div class="arrow">→</div><div class="node on">SIB</div><div class="arrow">→</div><div class="node">Instrument</div><div class="arrow">→</div><div class="node on">TDO</div>`;
+}
+renderSib();
+
+/* ========================= 09 HIERARCHY ========================= */
+let hierActive = null;
+const hierMap = {
+  mbist:{path:'TDI → SIB1 → MBIST → TDO', len:'3 stages', sibs:[1,0,0]},
+  sensor:{path:'TDI → SIB1 → SIB2 → Sensor → TDO', len:'4 stages', sibs:[1,1,0]},
+  debug:{path:'TDI → SIB1 → SIB2 → SIB3 → Debug → TDO', len:'5 stages', sibs:[1,1,1]},
+};
+function drawHier(){
+  const svg = document.getElementById('hiersvg');
+  const sibs = hierActive ? hierMap[hierActive].sibs : [0,0,0];
+  let html='';
+  ['SIB1','SIB2','SIB3'].forEach((s,i)=>{
+    const on = sibs[i];
+    html += `<rect x="${60+i*220}" y="20" width="80" height="34" rx="17" fill="${on?'#1d3a30':'#161f2c'}" stroke="${on?'#6ef5c5':'#232f40'}"/>
+      <text x="${100+i*220}" y="42" text-anchor="middle" fill="${on?'#6ef5c5':'#dfe9f2'}" font-size="11">${s}</text>`;
+    if(i<2) html += `<line x1="${140+i*220}" y1="37" x2="${60+(i+1)*220}" y2="37" stroke="${sibs[i+1]||sibs[i]?'#6ef5c5':'#3a4a5e'}" stroke-width="1.6" marker-end="url(#arrow)"/>`;
+  });
+  const insts=['MBIST','Sensor','Debug'];
+  insts.forEach((n,i)=>{
+    const on = hierActive===n.toLowerCase();
+    html += `<line x1="${100+i*220}" y1="54" x2="${100+i*220}" y2="90" stroke="${on?'#6ef5c5':'#3a4a5e'}" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <rect x="${60+i*220}" y="95" width="80" height="34" rx="6" fill="${on?'#1d3a30':'#161f2c'}" stroke="${on?'#6ef5c5':'#232f40'}"/>
+      <text x="${100+i*220}" y="117" text-anchor="middle" fill="${on?'#6ef5c5':'#dfe9f2'}" font-size="11">${n}</text>`;
+  });
+  svg.innerHTML = html;
+}
+function pickInstrument(name){
+  hierActive = name;
+  drawHier();
+  document.getElementById('hier-instr').textContent = name || 'none';
+  document.getElementById('hier-path').textContent = name ? hierMap[name].path : 'TDI → SIB1 → SIB2 → SIB3 → TDO';
+  document.getElementById('hier-len').textContent = name ? hierMap[name].len : '4 stages';
+  bench.instr = name || 'none'; paintBench();
+}
+drawHier();
+
+/* ========================= 11 END TO END ========================= */
+const e2ePhases = [
+  {title:'Phase 1 — TAP navigation', body:'The tester drives TMS/TCK, walking the TAP from Test-Logic-Reset into Shift-DR through Select-DR-Scan and Capture-DR.', tap:'Shift-DR', internal:'1. TAP leaves Run-Test/Idle\n2. Select-DR-Scan → Capture-DR → Shift-DR entered'},
+  {title:'Phase 2 — Select the IJTAG path', body:'While in Shift-DR, the JTAG data register that feeds the IJTAG network is now in the active scan path.', tap:'Shift-DR', internal:'The DR currently in the chain is the one that connects into the IJTAG network\\'s TDI.'},
+  {title:'Phase 3 — Open SIB1', body:'A 1 is shifted into SIB1 and committed on Update-DR, inserting the MBIST segment.', tap:'Update-DR', sib:1, internal:'Capture → Shift(1) → Update on SIB1. SIB1 is now open.'},
+  {title:'Phase 4 — MBIST is now reachable', body:'The active scan path has grown: TDI → SIB1 → MBIST → TDO.', tap:'Shift-DR', sib:1, internal:'Scan length increased by however many bits the MBIST instrument register set contributes.'},
+  {title:'Phase 5 — Write CONTROL = START', body:'The CONTROL register\\'s START bit is shifted in and updated.', tap:'Update-DR', sib:1, ctrl:'START', internal:'Control path: bits destined for MBIST.CONTROL are shifted and committed via Update-DR.'},
+  {title:'Phase 6 — Instrument runs', body:'MBIST transitions IDLE → RUNNING → COMPLETE internally, independent of the scan chain.', tap:'Run-Test/Idle', sib:1, ctrl:'START', status:'RUNNING', internal:'The tester typically parks in Run-Test/Idle and polls, since this takes many cycles of the instrument\\'s own clock.'},
+  {title:'Phase 7 — Read STATUS', body:'A DR-scan captures MBIST.STATUS and shifts it out.', tap:'Capture-DR', sib:1, ctrl:'START', status:'PASS', internal:'Status path: STATUS register content is captured, then shifted toward TDO.'},
+  {title:'Phase 8 — TDO delivers PASS', body:'The shifted-out bits reconstruct STATUS = PASS at the tester.', tap:'Shift-DR', sib:1, ctrl:'START', status:'PASS', internal:'Tester reconstructs the serial stream on TDO into the PASS value.'},
+];
+let e2eIdx = -1;
+const e2eWaveSignals = ['TCK','TMS','TDI','TDO'];
+function renderWave(){
+  const container = document.getElementById('e2e-wave');
+  let html='';
+  e2eWaveSignals.forEach(sig=>{
+    html += `<div class="wave-row"><div class="wave-name">${sig}</div><div class="wave-track">`;
+    for(let c=0;c<Math.max(e2eIdx+1,1);c++){
+      const v = c<=e2eIdx ? (Math.round(Math.sin(c+ (sig==='TDI'?1:sig==='TDO'?2:0))*0.5+0.5)) : 0;
+      html += `<div class="wave-cell ${c===e2eIdx?'sel':''} ${v?'hi':'lo'}" onclick="alert('Cycle ${c}: ${sig} = ${v}')">${c<=e2eIdx? v : ''}</div>`;
+    }
+    html += `</div></div>`;
+  });
+  container.innerHTML = html;
+}
+function e2eNext(){
+  if(e2eIdx >= e2ePhases.length-1) return;
+  e2eIdx++;
+  tickTck();
+  const p = e2ePhases[e2eIdx];
+  document.getElementById('e2e-phase-title').textContent = p.title;
+  document.getElementById('e2e-phase-body').textContent = p.body;
+  document.getElementById('e2e-tap').textContent = p.tap;
+  document.getElementById('e2e-sib').textContent = p.sib||0;
+  document.getElementById('e2e-control').textContent = p.ctrl||'–';
+  document.getElementById('e2e-status').textContent = p.status||'–';
+  document.getElementById('e2e-internal').textContent = p.internal;
+  bench.tap=p.tap; bench.sib=p.sib||0; bench.ctrl=p.ctrl||null; bench.status=p.status||null; bench.instr='MBIST'; paintBench();
+  renderWave();
+}
+function e2eReset(){
+  e2eIdx=-1;
+  document.getElementById('e2e-phase-title').textContent='Ready';
+  document.getElementById('e2e-phase-body').textContent='Click "Next phase" to begin the MBIST access sequence.';
+  document.getElementById('e2e-tap').textContent='Test-Logic-Reset';
+  document.getElementById('e2e-sib').textContent='0';
+  document.getElementById('e2e-control').textContent='–';
+  document.getElementById('e2e-status').textContent='–';
+  document.getElementById('e2e-internal').textContent="\\"What's happening internally\\" appears here as you step through phases.";
+  bench.tap='Test-Logic-Reset'; bench.sib=0; bench.ctrl=null; bench.status=null; bench.instr='none'; paintBench();
+  renderWave();
+}
+renderWave();
+
+/* ========================= 12 DEBUG SCENARIOS ========================= */
+const debugScenarios = [
+  {title:'Symptom: MBIST never responds', body:`Expected path: <span class="mono">TDI → SIB1 → MBIST → TDO</span><br>Actual path: <span class="mono">TDI → SIB1 → TDO</span><br><br><b>Cause:</b> SIB1 was never taken through Capture→Shift(1)→Update — it's still closed.<br><b>Fix:</b> Explicitly open SIB1 before addressing MBIST registers, and confirm with a read-back that SIB1 = 1.`},
+  {title:'Symptom: shifted data lands nowhere', body:`<b>Cause:</b> The TAP was left in Run-Test/Idle or Pause-DR instead of Shift-DR when TDI bits were sent — no shifting occurs outside Shift-DR/Shift-IR.<br><b>Fix:</b> Verify the TMS sequence actually reaches Shift-DR before streaming data, using the state-machine diagram in Module 04.`},
+  {title:'Symptom: writes seem to hit the wrong register', body:`<b>Cause:</b> The wrong value was loaded into the Instruction Register, so the decoder selected a different data register than intended.<br><b>Fix:</b> Re-check the instruction opcode loaded in the last Shift-IR/Update-IR, and confirm against the device's documented instruction table.`},
+  {title:'Symptom: TDO output looks shifted or garbled', body:`<b>Cause:</b> The number of bits shifted didn't match the actual active scan-path length — often because a SIB's state changed the path length since the last calculation.<br><b>Fix:</b> Recompute scan length after any SIB state change, and confirm it against the network topology before shifting.`},
+];
+function showDebug(i){
+  const s = debugScenarios[i];
+  document.getElementById('debug-box').innerHTML = `<h4>${s.title}</h4><p>${s.body}</p>`;
+}
+
+/* ========================= 13 QUIZ ========================= */
+const quizData = [
+  {q:'If SIB = 0, what happens to the downstream segment?', opts:['It is inserted into the scan path','It is bypassed — not part of the active path','It is permanently disconnected','It becomes the Instruction Register'], correct:1,
+   explain:'SIB=0 means the segment is skipped; the scan path is shorter and the instrument behind it is unreachable until the SIB opens.'},
+  {q:'Which TAP state is where actual bit shifting happens for data?', opts:['Capture-DR','Shift-DR','Update-DR','Run-Test/Idle'], correct:1,
+   explain:'Shift-DR (and Shift-IR for instructions) is the only state where TDI/TDO actively move bits each TCK.'},
+  {q:'What does ICL describe?', opts:['The procedure to run an instrument','The connectivity and structure of the network','The clock frequency of TCK','The physical die layout'], correct:1,
+   explain:'ICL is the structural "map" — instruments, registers, SIBs, and how they connect.'},
+  {q:'What does PDL describe?', opts:['The connectivity of the network','The physical pinout','The procedure for operating an instrument','The IEEE standard number'], correct:2,
+   explain:'PDL is the "directions" — the operational sequence for using an instrument correctly.'},
+  {q:'JTAG and IJTAG are best described as:', opts:['Identical standards','Unrelated and never used together','Related — IJTAG commonly rides on top of a JTAG TAP','IJTAG replaces JTAG entirely'], correct:2,
+   explain:'IJTAG (1687) typically uses the JTAG TAP (1149.1) as an entry point into a reconfigurable internal network.'},
+];
+function renderQuiz(){
+  const c = document.getElementById('quiz-container');
+  c.innerHTML = quizData.map((item, qi)=>`
+    <div class="quiz">
+      <p class="q">${qi+1}. ${item.q}</p>
+      <div class="opts">
+        ${item.opts.map((o,oi)=>`<button class="opt" onclick="answerQuiz(${qi},${oi})" id="q${qi}o${oi}">${o}</button>`).join('')}
+      </div>
+      <div class="explain" id="q${qi}explain">${item.explain}</div>
+    </div>
+  `).join('');
+}
+function answerQuiz(qi, oi){
+  const item = quizData[qi];
+  for(let i=0;i<item.opts.length;i++){
+    const btn = document.getElementById(`q${qi}o${i}`);
+    btn.disabled = true;
+    if(i===item.correct) btn.classList.add('correct');
+    else if(i===oi) btn.classList.add('wrong');
+  }
+  document.getElementById(`q${qi}explain`).classList.add('show');
+}
+renderQuiz();
+
+/* ========================= 14 GLOSSARY ========================= */
+const glossary = [
+  ['DFT','Design-for-Test — features built into a chip specifically to make it testable.'],
+  ['JTAG','IEEE 1149.1 — a standard 4/5-wire interface and TAP state machine for external test access.'],
+  ['IEEE 1149.1','The formal standard defining JTAG.'],
+  ['IEEE 1687','The formal standard defining IJTAG (internal instrument access).'],
+  ['TAP','Test Access Port — the controller/state machine at the heart of JTAG.'],
+  ['TCK','Test Clock — clocks all JTAG activity.'],
+  ['TMS','Test Mode Select — steers the TAP state machine.'],
+  ['TDI','Test Data In — serial input.'],
+  ['TDO','Test Data Out — serial output.'],
+  ['IR','Instruction Register — selects which operation/data register is active.'],
+  ['DR','Data Register — any register in the scan path selected by the current instruction.'],
+  ['Capture','Loads a live parallel value into a register.'],
+  ['Shift','Moves register contents one bit per TCK toward TDO while sampling TDI.'],
+  ['Update','Commits the shifted-in value to where it takes effect.'],
+  ['Boundary Scan','Cells at each pin used to drive/sample values for board-level interconnect test.'],
+  ['Instrument','Embedded test/debug/measurement logic reachable through the IJTAG network.'],
+  ['IJTAG Network','The reconfigurable scan network of SIBs and instruments behind a TAP.'],
+  ['SIB','Segment Insertion Bit — a 1-bit register controlling whether a downstream segment is in the active path.'],
+  ['Segment','A portion of the scan path that a SIB can insert or bypass.'],
+  ['ICL','Instrument Connectivity Language — describes network structure.'],
+  ['PDL','Procedural Description Language — describes operational procedures.'],
+  ['Retargeting','Mapping an instrument-level procedure onto the actual access path once integrated into a larger chip.'],
+  ['Scan Path','The current serial route data takes from TDI to TDO.'],
+  ['Bypass','A 1-bit register that passes data through with minimal delay, skipping a device.'],
+  ['EXTEST','A JTAG instruction that drives boundary-scan output cells for board interconnect testing.'],
+  ['IDCODE','A JTAG instruction/register exposing a device identifier.'],
+];
+function renderGlossary(filter=''){
+  const el = document.getElementById('glossary-list');
+  const f = filter.toLowerCase();
+  el.innerHTML = glossary.filter(([t,d])=>t.toLowerCase().includes(f)||d.toLowerCase().includes(f))
+    .map(([t,d])=>`<div class="glossary-item"><dt>${t}</dt><dd>${d}</dd></div>`).join('');
+}
+function filterGlossary(v){ renderGlossary(v); }
+renderGlossary();
+</script>
+</body>
+</html>
